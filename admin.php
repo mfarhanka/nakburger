@@ -1,42 +1,7 @@
 <?php
 session_start();
 
-$dataFile = __DIR__ . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'stalls.json';
-
-function loadStalls(string $path): array
-{
-    if (!file_exists($path)) {
-        return [];
-    }
-
-    $content = file_get_contents($path);
-    if ($content === false || trim($content) === '') {
-        return [];
-    }
-
-    $decoded = json_decode($content, true);
-    return is_array($decoded) ? $decoded : [];
-}
-
-function saveStalls(string $path, array $stalls): bool
-{
-    $json = json_encode($stalls, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    if ($json === false) {
-        return false;
-    }
-
-    return file_put_contents($path, $json . PHP_EOL, LOCK_EX) !== false;
-}
-
-function nextId(array $stalls): int
-{
-    if (!$stalls) {
-        return 1;
-    }
-
-    $ids = array_map(static fn($stall) => (int)($stall['id'] ?? 0), $stalls);
-    return max($ids) + 1;
-}
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR . 'db.php';
 
 function parseMenuItems(string $jsonText): array
 {
@@ -62,19 +27,27 @@ function parseMenuItems(string $jsonText): array
     return $items;
 }
 
-$stalls = loadStalls($dataFile);
-usort($stalls, static fn($a, $b) => ((int)$a['id']) <=> ((int)$b['id']));
+try {
+    $pdo = getDbConnection();
+} catch (Throwable $e) {
+    http_response_code(500);
+    echo 'Database connection failed: ' . htmlspecialchars($e->getMessage());
+    exit;
+}
+
+$stalls = fetchAllStalls($pdo);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
     if ($action === 'delete') {
         $deleteId = (int)($_POST['id'] ?? 0);
-        $stalls = array_values(array_filter($stalls, static fn($stall) => (int)$stall['id'] !== $deleteId));
 
-        if (saveStalls($dataFile, $stalls)) {
+        try {
+            $deleteStmt = $pdo->prepare('DELETE FROM stalls WHERE id = :id');
+            $deleteStmt->execute([':id' => $deleteId]);
             $_SESSION['flash'] = ['type' => 'success', 'message' => 'Stall deleted.'];
-        } else {
+        } catch (Throwable $e) {
             $_SESSION['flash'] = ['type' => 'danger', 'message' => 'Failed to delete stall.'];
         }
 
@@ -100,39 +73,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Name, type, and address are required.');
             }
 
-            $payload = [
-                'id' => $id > 0 ? $id : nextId($stalls),
-                'name' => $name,
-                'type' => $type,
-                'rating' => $rating,
-                'reviews' => $reviews,
-                'specialty' => $specialty,
-                'address' => $address,
-                'offsetLat' => $offsetLat,
-                'offsetLng' => $offsetLng,
-                'menu' => [
-                    'signature' => $signature,
-                    'sides' => $sides,
-                ],
-            ];
+            $menuSignatureJson = json_encode($signature, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $menuSidesJson = json_encode($sides, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
-            $updated = false;
-            foreach ($stalls as $idx => $stall) {
-                if ((int)$stall['id'] === (int)$payload['id']) {
-                    $stalls[$idx] = $payload;
-                    $updated = true;
-                    break;
-                }
+            if ($menuSignatureJson === false || $menuSidesJson === false) {
+                throw new RuntimeException('Failed to encode menu payload.');
             }
 
-            if (!$updated) {
-                $stalls[] = $payload;
-            }
+            if ($id > 0) {
+                $updateStmt = $pdo->prepare(
+                    'UPDATE stalls '
+                    . 'SET name = :name, type = :type, rating = :rating, reviews = :reviews, specialty = :specialty, '
+                    . 'address = :address, offset_lat = :offset_lat, offset_lng = :offset_lng, menu_signature = :menu_signature, menu_sides = :menu_sides '
+                    . 'WHERE id = :id'
+                );
 
-            usort($stalls, static fn($a, $b) => ((int)$a['id']) <=> ((int)$b['id']));
+                $updateStmt->execute([
+                    ':id' => $id,
+                    ':name' => $name,
+                    ':type' => $type,
+                    ':rating' => $rating,
+                    ':reviews' => $reviews,
+                    ':specialty' => $specialty,
+                    ':address' => $address,
+                    ':offset_lat' => $offsetLat,
+                    ':offset_lng' => $offsetLng,
+                    ':menu_signature' => $menuSignatureJson,
+                    ':menu_sides' => $menuSidesJson,
+                ]);
+                $updated = true;
+            } else {
+                $insertStmt = $pdo->prepare(
+                    'INSERT INTO stalls (name, type, rating, reviews, specialty, address, offset_lat, offset_lng, menu_signature, menu_sides) '
+                    . 'VALUES (:name, :type, :rating, :reviews, :specialty, :address, :offset_lat, :offset_lng, :menu_signature, :menu_sides)'
+                );
 
-            if (!saveStalls($dataFile, $stalls)) {
-                throw new RuntimeException('Failed to save data to JSON file.');
+                $insertStmt->execute([
+                    ':name' => $name,
+                    ':type' => $type,
+                    ':rating' => $rating,
+                    ':reviews' => $reviews,
+                    ':specialty' => $specialty,
+                    ':address' => $address,
+                    ':offset_lat' => $offsetLat,
+                    ':offset_lng' => $offsetLng,
+                    ':menu_signature' => $menuSignatureJson,
+                    ':menu_sides' => $menuSidesJson,
+                ]);
+                $updated = false;
             }
 
             $_SESSION['flash'] = ['type' => 'success', 'message' => $updated ? 'Stall updated.' : 'Stall created.'];

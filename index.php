@@ -1,15 +1,12 @@
 <?php
-$dataFile = __DIR__ . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'stalls.json';
 $baseStallDatabase = [];
+require_once __DIR__ . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR . 'db.php';
 
-if (file_exists($dataFile)) {
-    $jsonContent = file_get_contents($dataFile);
-    if ($jsonContent !== false && trim($jsonContent) !== '') {
-        $decoded = json_decode($jsonContent, true);
-        if (is_array($decoded)) {
-            $baseStallDatabase = $decoded;
-        }
-    }
+try {
+    $pdo = getDbConnection();
+    $baseStallDatabase = fetchAllStalls($pdo);
+} catch (Throwable $e) {
+    $baseStallDatabase = [];
 }
 ?>
 <!DOCTYPE html>
