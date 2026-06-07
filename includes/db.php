@@ -36,7 +36,6 @@ function getDbConnection(): PDO
     $pdo = new PDO($dsn, $cfg['username'], $cfg['password'], $options);
 
     ensureStallSchema($pdo);
-    migrateStallsFromJsonIfNeeded($pdo);
 
     return $pdo;
 }
@@ -63,54 +62,6 @@ CREATE TABLE IF NOT EXISTS stalls (
 SQL;
 
     $pdo->exec($sql);
-}
-
-function migrateStallsFromJsonIfNeeded(PDO $pdo): void
-{
-    $count = (int)$pdo->query('SELECT COUNT(*) FROM stalls')->fetchColumn();
-    if ($count > 0) {
-        return;
-    }
-
-    $jsonPath = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'stalls.json';
-    if (!file_exists($jsonPath)) {
-        return;
-    }
-
-    $content = file_get_contents($jsonPath);
-    if ($content === false || trim($content) === '') {
-        return;
-    }
-
-    $items = json_decode($content, true);
-    if (!is_array($items)) {
-        return;
-    }
-
-    $insert = $pdo->prepare(
-        'INSERT INTO stalls (id, name, type, rating, reviews, specialty, address, offset_lat, offset_lng, menu_signature, menu_sides) '
-        . 'VALUES (:id, :name, :type, :rating, :reviews, :specialty, :address, :offset_lat, :offset_lng, :menu_signature, :menu_sides)'
-    );
-
-    foreach ($items as $stall) {
-        if (!is_array($stall)) {
-            continue;
-        }
-
-        $insert->execute([
-            ':id' => (int)($stall['id'] ?? 0),
-            ':name' => (string)($stall['name'] ?? ''),
-            ':type' => (string)($stall['type'] ?? 'Ramly Style'),
-            ':rating' => (float)($stall['rating'] ?? 4.5),
-            ':reviews' => (int)($stall['reviews'] ?? 0),
-            ':specialty' => (string)($stall['specialty'] ?? ''),
-            ':address' => (string)($stall['address'] ?? ''),
-            ':offset_lat' => (float)($stall['offsetLat'] ?? 0),
-            ':offset_lng' => (float)($stall['offsetLng'] ?? 0),
-            ':menu_signature' => json_encode(($stall['menu']['signature'] ?? []), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-            ':menu_sides' => json_encode(($stall['menu']['sides'] ?? []), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-        ]);
-    }
 }
 
 function rowToStallPayload(array $row): array
