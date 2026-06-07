@@ -214,6 +214,9 @@ try {
                 <a class="btn btn-outline-light px-3" href="admin.php" title="Open admin panel">
                     <i class="bi bi-sliders me-1"></i> Admin
                 </a>
+                <a class="btn btn-outline-warning px-3" href="owner.php" title="Open owner portal">
+                    <i class="bi bi-shop me-1"></i> Owner
+                </a>
                 <button class="btn btn-outline-warning position-relative px-3" data-bs-toggle="modal" data-bs-target="#cartModal" id="cartBtn">
                     <i class="bi bi-cart3 fs-5"></i>
                     <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" id="cartCount">

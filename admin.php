@@ -85,6 +85,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $address = trim((string)($_POST['address'] ?? ''));
             $offsetLat = (float)($_POST['offsetLat'] ?? 0);
             $offsetLng = (float)($_POST['offsetLng'] ?? 0);
+            $ownerName = trim((string)($_POST['owner_name'] ?? ''));
+            $ownerUsername = trim((string)($_POST['owner_username'] ?? ''));
+            $ownerPassword = (string)($_POST['owner_password'] ?? '');
             $signature = parseMenuItemsFromPost('signature', '🍔');
             $sides = parseMenuItemsFromPost('sides', '🥤');
 
@@ -98,6 +101,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($menuSignatureJson === false || $menuSidesJson === false) {
                 throw new RuntimeException('Failed to encode menu payload.');
             }
+
+            $pdo->beginTransaction();
 
             if ($id > 0) {
                 $updateStmt = $pdo->prepare(
@@ -120,6 +125,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ':menu_signature' => $menuSignatureJson,
                     ':menu_sides' => $menuSidesJson,
                 ]);
+                saveStallOwner($pdo, $id, $ownerName, $ownerUsername, $ownerPassword);
                 $updated = true;
             } else {
                 $insertStmt = $pdo->prepare(
@@ -139,13 +145,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ':menu_signature' => $menuSignatureJson,
                     ':menu_sides' => $menuSidesJson,
                 ]);
+                $id = (int)$pdo->lastInsertId();
+                saveStallOwner($pdo, $id, $ownerName, $ownerUsername, $ownerPassword);
                 $updated = false;
             }
+
+            $pdo->commit();
 
             $_SESSION['flash'] = ['type' => 'success', 'message' => $updated ? 'Stall updated.' : 'Stall created.'];
             header('Location: admin.php');
             exit;
         } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             $_SESSION['flash'] = ['type' => 'danger', 'message' => $e->getMessage()];
             header('Location: admin.php');
             exit;
@@ -176,6 +189,7 @@ $defaultStall = [
     'offsetLat' => 0,
     'offsetLng' => 0,
     'menu' => ['signature' => [], 'sides' => []],
+    'owner' => ['id' => 0, 'name' => '', 'username' => ''],
 ];
 
 $formStall = $editingStall ?: $defaultStall;
@@ -252,6 +266,7 @@ if (!$sidesRows) {
                                 <tr>
                                     <th>ID</th>
                                     <th>Name</th>
+                                    <th>Owner</th>
                                     <th>Type</th>
                                     <th>Rating</th>
                                     <th>Actions</th>
@@ -259,7 +274,7 @@ if (!$sidesRows) {
                             </thead>
                             <tbody>
                                 <?php if (!$stalls): ?>
-                                    <tr><td colspan="5" class="text-center text-muted py-4">No stalls available yet.</td></tr>
+                                    <tr><td colspan="6" class="text-center text-muted py-4">No stalls available yet.</td></tr>
                                 <?php endif; ?>
                                 <?php foreach ($stalls as $stall): ?>
                                     <tr>
@@ -268,11 +283,22 @@ if (!$sidesRows) {
                                             <div class="fw-semibold"><?= htmlspecialchars((string)$stall['name']) ?></div>
                                             <div class="small text-secondary"><?= htmlspecialchars((string)$stall['address']) ?></div>
                                         </td>
+                                        <td>
+                                            <?php if (!empty($stall['owner']['name'])): ?>
+                                                <div class="fw-semibold"><?= htmlspecialchars((string)$stall['owner']['name']) ?></div>
+                                                <div class="small text-secondary">@<?= htmlspecialchars((string)$stall['owner']['username']) ?></div>
+                                            <?php else: ?>
+                                                <span class="text-muted small">No owner</span>
+                                            <?php endif; ?>
+                                        </td>
                                         <td><?= htmlspecialchars((string)$stall['type']) ?></td>
                                         <td><?= number_format((float)$stall['rating'], 1) ?></td>
                                         <td>
                                             <div class="d-flex gap-2">
                                                 <a class="btn btn-sm btn-warning" href="admin.php?edit=<?= (int)$stall['id'] ?>">Edit</a>
+                                                <?php if (!empty($stall['owner']['username'])): ?>
+                                                    <a class="btn btn-sm btn-outline-primary" href="owner.php">Owner Login</a>
+                                                <?php endif; ?>
                                                 <form method="post" onsubmit="return confirm('Delete this stall?');">
                                                     <input type="hidden" name="action" value="delete">
                                                     <input type="hidden" name="id" value="<?= (int)$stall['id'] ?>">
@@ -328,6 +354,26 @@ if (!$sidesRows) {
                         <div class="mb-3">
                             <label class="form-label">Address</label>
                             <input class="form-control" name="address" required value="<?= htmlspecialchars((string)$formStall['address']) ?>">
+                        </div>
+
+                        <div class="border rounded-3 p-3 mb-3 bg-light-subtle">
+                            <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+                                <label class="form-label mb-0 fw-semibold">Stall Owner Access</label>
+                                <a class="btn btn-sm btn-outline-primary" href="owner.php">Open Owner Portal</a>
+                            </div>
+                            <p class="small text-secondary mb-3">Assign one owner account to this stall. Leave all fields blank to remove owner access. Leave password blank while editing to keep the existing password.</p>
+                            <div class="mb-3">
+                                <label class="form-label">Owner Name</label>
+                                <input class="form-control" name="owner_name" value="<?= htmlspecialchars((string)($formStall['owner']['name'] ?? '')) ?>" placeholder="Owner full name">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Owner Username</label>
+                                <input class="form-control" name="owner_username" value="<?= htmlspecialchars((string)($formStall['owner']['username'] ?? '')) ?>" placeholder="owner.login">
+                            </div>
+                            <div class="mb-0">
+                                <label class="form-label">Owner Password</label>
+                                <input class="form-control" type="password" name="owner_password" placeholder="Set or change password">
+                            </div>
                         </div>
 
                         <div class="row g-2">
