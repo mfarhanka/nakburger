@@ -274,6 +274,7 @@ if (!$sidesRows) {
             </div>
             <div class="d-flex gap-2">
                 <a class="btn btn-outline-dark" href="index.php"><i class="bi bi-arrow-left"></i> Back to App</a>
+                <a class="btn btn-outline-info" href="kitchen.php"><i class="bi bi-egg-fried"></i> Kitchen</a>
                 <a class="btn btn-dark" href="admin.php">New / Reset Form</a>
             </div>
         </div>

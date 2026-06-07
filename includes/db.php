@@ -37,6 +37,7 @@ function getDbConnection(): PDO
 
     ensureStallSchema($pdo);
     ensureOwnerSchema($pdo);
+    ensureOrderSchema($pdo);
 
     return $pdo;
 }
@@ -80,6 +81,30 @@ CREATE TABLE IF NOT EXISTS stall_owners (
     UNIQUE KEY uniq_stall_owner_stall (stall_id),
     UNIQUE KEY uniq_stall_owner_username (username),
     CONSTRAINT fk_stall_owners_stall FOREIGN KEY (stall_id) REFERENCES stalls (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+SQL;
+
+    $pdo->exec($sql);
+}
+
+function ensureOrderSchema(PDO $pdo): void
+{
+    $sql = <<<'SQL'
+CREATE TABLE IF NOT EXISTS orders (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    order_code VARCHAR(40) NOT NULL,
+    stall_id INT UNSIGNED NOT NULL,
+    stall_name VARCHAR(191) NOT NULL,
+    customer_name VARCHAR(191) NOT NULL DEFAULT 'Guest',
+    total_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+    status VARCHAR(50) NOT NULL DEFAULT 'received',
+    order_items JSON NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uniq_orders_order_code (order_code),
+    KEY idx_orders_stall_created (stall_id, created_at),
+    CONSTRAINT fk_orders_stall FOREIGN KEY (stall_id) REFERENCES stalls (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 SQL;
 
@@ -235,4 +260,100 @@ function authenticateStallOwner(PDO $pdo, string $username, string $password): ?
     }
 
     return rowToStallPayload($row);
+}
+
+function createOrder(PDO $pdo, int $stallId, string $stallName, array $items, string $customerName = 'Guest'): array
+{
+    if ($stallId <= 0) {
+        throw new RuntimeException('Invalid stall for order.');
+    }
+
+    if (!$items) {
+        throw new RuntimeException('Order requires at least one item.');
+    }
+
+    $normalizedItems = [];
+    $totalAmount = 0.0;
+
+    foreach ($items as $item) {
+        $name = trim((string)($item['name'] ?? ''));
+        $price = (float)($item['price'] ?? 0);
+        $qty = max(1, (int)($item['qty'] ?? 1));
+        $remarks = trim((string)($item['remarks'] ?? ''));
+        $addons = $item['addons'] ?? [];
+
+        if ($name === '') {
+            throw new RuntimeException('Order item name is required.');
+        }
+
+        $lineTotal = $price * $qty;
+        $totalAmount += $lineTotal;
+
+        $normalizedItems[] = [
+            'name' => $name,
+            'price' => $price,
+            'qty' => $qty,
+            'addons' => is_array($addons) ? $addons : [],
+            'prepStyle' => trim((string)($item['prepStyle'] ?? '')),
+            'remarks' => $remarks,
+            'lineTotal' => $lineTotal,
+        ];
+    }
+
+    $itemsJson = json_encode($normalizedItems, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if ($itemsJson === false) {
+        throw new RuntimeException('Failed to encode order items.');
+    }
+
+    $orderCode = 'NB-' . strtoupper(bin2hex(random_bytes(3)));
+
+    $insertStmt = $pdo->prepare(
+        'INSERT INTO orders (order_code, stall_id, stall_name, customer_name, total_amount, status, order_items) '
+        . 'VALUES (:order_code, :stall_id, :stall_name, :customer_name, :total_amount, :status, :order_items)'
+    );
+
+    $insertStmt->execute([
+        ':order_code' => $orderCode,
+        ':stall_id' => $stallId,
+        ':stall_name' => trim($stallName) === '' ? 'Unknown Stall' : trim($stallName),
+        ':customer_name' => trim($customerName) === '' ? 'Guest' : trim($customerName),
+        ':total_amount' => round($totalAmount, 2),
+        ':status' => 'received',
+        ':order_items' => $itemsJson,
+    ]);
+
+    return [
+        'id' => (int)$pdo->lastInsertId(),
+        'orderCode' => $orderCode,
+        'totalAmount' => round($totalAmount, 2),
+    ];
+}
+
+function fetchKitchenOrders(PDO $pdo, int $limit = 100): array
+{
+    $safeLimit = max(1, min(500, $limit));
+
+    $stmt = $pdo->query(
+        'SELECT id, order_code, stall_id, stall_name, customer_name, total_amount, status, order_items, created_at '
+        . 'FROM orders ORDER BY id DESC LIMIT ' . $safeLimit
+    );
+    $rows = $stmt->fetchAll();
+
+    $orders = [];
+    foreach ($rows as $row) {
+        $items = json_decode((string)($row['order_items'] ?? '[]'), true);
+        $orders[] = [
+            'id' => (int)$row['id'],
+            'orderCode' => (string)$row['order_code'],
+            'stallId' => (int)$row['stall_id'],
+            'stallName' => (string)$row['stall_name'],
+            'customerName' => (string)$row['customer_name'],
+            'totalAmount' => (float)$row['total_amount'],
+            'status' => (string)$row['status'],
+            'items' => is_array($items) ? $items : [],
+            'createdAt' => (string)$row['created_at'],
+        ];
+    }
+
+    return $orders;
 }

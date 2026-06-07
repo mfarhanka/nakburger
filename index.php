@@ -217,6 +217,9 @@ try {
                 <a class="btn btn-outline-warning px-3" href="owner.php" title="Open owner portal">
                     <i class="bi bi-shop me-1"></i> Owner
                 </a>
+                <a class="btn btn-outline-info px-3" href="kitchen.php" title="Open kitchen order board">
+                    <i class="bi bi-egg-fried me-1"></i> Kitchen
+                </a>
                 <button class="btn btn-outline-warning position-relative px-3" data-bs-toggle="modal" data-bs-target="#cartModal" id="cartBtn">
                     <i class="bi bi-cart3 fs-5"></i>
                     <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" id="cartCount">
@@ -986,14 +989,54 @@ try {
         }
 
         // Action: Place Mock Order & Trigger Progress Tracker
-        function placeOrder() {
+        async function placeOrder() {
             if (cart.length === 0) return;
 
             const stall = dynamicallyPositionedStalls.find(s => s.id === cart[0].stallId);
-            cartModal.hide();
+            if (!stall) return;
 
-            // Set Location display inside Tracker Modal
-            document.getElementById('trackerStallLocation').innerText = `${stall.name} — Located at ${stall.address}`;
+            const checkoutBtn = document.getElementById('checkoutBtn');
+            checkoutBtn.disabled = true;
+
+            try {
+                const response = await fetch('orders_api.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        stallId: stall.id,
+                        stallName: stall.name,
+                        customerName: 'Guest',
+                        items: cart.map(item => ({
+                            name: item.name,
+                            price: item.price,
+                            qty: 1,
+                            addons: item.addons,
+                            prepStyle: item.prepStyle,
+                            remarks: item.remarks
+                        }))
+                    })
+                });
+
+                const payload = await response.json();
+                if (!response.ok || !payload.ok) {
+                    throw new Error(payload.message || 'Failed to submit order to kitchen.');
+                }
+
+                // Show order code in tracker so customers can reference it at pickup.
+                document.getElementById('trackerStallLocation').innerText = `${stall.name} — ${stall.address} | Order ${payload.orderCode}`;
+            } catch (error) {
+                showCustomAlert(
+                    'bi-exclamation-triangle-fill text-danger',
+                    'Checkout Failed',
+                    error instanceof Error ? error.message : 'Failed to submit your order. Please try again.'
+                );
+                checkoutBtn.disabled = false;
+                return;
+            }
+
+            cartModal.hide();
 
             // Initialize Progress Steps Animation
             trackerModal.show();

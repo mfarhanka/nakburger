@@ -34,3 +34,20 @@ CREATE TABLE IF NOT EXISTS stall_owners (
   UNIQUE KEY uniq_stall_owner_username (username),
   CONSTRAINT fk_stall_owners_stall FOREIGN KEY (stall_id) REFERENCES stalls (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS orders (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  order_code VARCHAR(40) NOT NULL,
+  stall_id INT UNSIGNED NOT NULL,
+  stall_name VARCHAR(191) NOT NULL,
+  customer_name VARCHAR(191) NOT NULL DEFAULT 'Guest',
+  total_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+  status VARCHAR(50) NOT NULL DEFAULT 'received',
+  order_items JSON NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_orders_order_code (order_code),
+  KEY idx_orders_stall_created (stall_id, created_at),
+  CONSTRAINT fk_orders_stall FOREIGN KEY (stall_id) REFERENCES stalls (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
