@@ -1,3 +1,17 @@
+<?php
+$dataFile = __DIR__ . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'stalls.json';
+$baseStallDatabase = [];
+
+if (file_exists($dataFile)) {
+    $jsonContent = file_get_contents($dataFile);
+    if ($jsonContent !== false && trim($jsonContent) !== '') {
+        $decoded = json_decode($jsonContent, true);
+        if (is_array($decoded)) {
+            $baseStallDatabase = $decoded;
+        }
+    }
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -200,6 +214,9 @@
                 <span class="brand-text text-white fs-4">Nak<span class="text-warning">Burger</span></span>
             </a>
             <div class="d-flex align-items-center gap-2">
+                <a class="btn btn-outline-light px-3" href="admin.php" title="Open admin panel">
+                    <i class="bi bi-sliders me-1"></i> Admin
+                </a>
                 <button class="btn btn-outline-warning position-relative px-3" data-bs-toggle="modal" data-bs-target="#cartModal" id="cartBtn">
                     <i class="bi bi-cart3 fs-5"></i>
                     <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" id="cartCount">
@@ -510,114 +527,8 @@
         let userLng = 101.6559;
         let isDefaultLocation = true;
 
-        // Base Burger Stall Database (These will be dynamically calculated relative to the user's live coordinates)
-        const baseStallDatabase = [
-            {
-                id: 1,
-                name: "Brother Bob's Banjir Burger",
-                type: "Ramly Style",
-                rating: 4.8,
-                reviews: 142,
-                specialty: "Sausage Special, Egg Wrapped Beef",
-                address: "Jalan Teknokrat 5, Corner Food Alley",
-                offsetLat: 0.0035,
-                offsetLng: -0.0042,
-                menu: {
-                    signature: [
-                        { name: "Special Beef Burger (Double)", price: 9.50, desc: "Classic street burger, two patties wrapped meticulously inside a fried egg with cheese and black pepper drizzle.", emoji: "🍔" },
-                        { name: "Sausage Banjir Special", price: 7.50, desc: "Grilled sausage sliced up with tons of cheese sauce, sweet chili, and cabbage.", emoji: "🌭" }
-                    ],
-                    sides: [
-                        { name: "Chili Cheese Fries", price: 6.00, desc: "Fries topped with warm cheese sauce and meat seasoning.", emoji: "🍟" },
-                        { name: "Teh Tarik Ice", price: 3.50, desc: "Classic sweetened milk tea.", emoji: "🥤" }
-                    ]
-                }
-            },
-            {
-                id: 2,
-                name: "The Sizzle Smash Pit",
-                type: "Smashed Beef",
-                rating: 4.9,
-                reviews: 89,
-                specialty: "Caramelized Onion Triple Smash",
-                address: "Lebuh Raya Cyber, Food Truck Zone",
-                offsetLat: -0.0051,
-                offsetLng: 0.0038,
-                menu: {
-                    signature: [
-                        { name: "Ultimate Double Smash", price: 13.50, desc: "Two ultra-crisp smashed beef patties, house butter, high-melt cheddar, signature relish.", emoji: "🍔" },
-                        { name: "Triple Sizzler", price: 17.00, desc: "For the big appetites. Three crispy smashed beef patties, custom Sizzle Sauce.", emoji: "🍔" }
-                    ],
-                    sides: [
-                        { name: "Onion Ring Basket", price: 5.50, desc: "Battered and extra-crispy fried sweet onion rings.", emoji: "🧅" },
-                        { name: "Fresh Lemonade Splash", price: 4.00, desc: "Cold, tangy, refreshing lemonade.", emoji: "🥤" }
-                    ]
-                }
-            },
-            {
-                id: 3,
-                name: "Kak Nora's Charcoal Grills",
-                type: "Charcoal Grill",
-                rating: 4.7,
-                reviews: 215,
-                specialty: "Thick Charcoal Chicken, Gourmet Feel",
-                address: "Persiaran Multimedia, Beside Metro Station",
-                offsetLat: 0.0062,
-                offsetLng: 0.0051,
-                menu: {
-                    signature: [
-                        { name: "Charcoal Flame-Grilled Chicken", price: 11.50, desc: "Thick hand-pressed chicken patty infused with real hickory charcoal wood smoke.", emoji: "🍗" },
-                        { name: "Nora's Smoked Beef Gourmet", price: 12.50, desc: "Quarter pound patty slow grilled over genuine charcoal embers, special garlic mayo.", emoji: "🍔" }
-                    ],
-                    sides: [
-                        { name: "Sweet Potato Wedges", price: 6.50, desc: "Crispy skin-on sweet potatoes with savory spices.", emoji: "🍠" },
-                        { name: "Iced Milo Dinosaur", price: 4.50, desc: "Chocolate malt drink with an extra mountain of cocoa powder on top.", emoji: "🥤" }
-                    ]
-                }
-            },
-            {
-                id: 4,
-                name: "Ramly Express Hub",
-                type: "Ramly Style",
-                rating: 4.5,
-                reviews: 320,
-                specialty: "Super Speed Burger Special",
-                address: "Jalan Persiaran APEC, In Front of Convenience Store",
-                offsetLat: -0.0021,
-                offsetLng: -0.0068,
-                menu: {
-                    signature: [
-                        { name: "Lamb Burger Special", price: 8.50, desc: "Savory street-grilled lamb patty, thoroughly spiced, wrapped with egg, cabbage, and extra mayo.", emoji: "🍔" },
-                        { name: "Slinging Fish Burger", price: 7.00, desc: "Golden fried fish patty with local sweet chili relish and warm burger buns.", emoji: "🐟" }
-                    ],
-                    sides: [
-                        { name: "Nugget Box (6pcs)", price: 5.00, desc: "Deep-fried premium street chicken nuggets with chili dipping sauce.", emoji: "🍗" },
-                        { name: "Iced Sirap Bandung", price: 3.00, desc: "Sweet rose syrup milk over ice.", emoji: "🥛" }
-                    ]
-                }
-            },
-            {
-                id: 5,
-                name: "Smokey Joe's Street Truck",
-                type: "Charcoal Grill",
-                rating: 4.6,
-                reviews: 64,
-                specialty: "Hickory Smoke Beef Burgers",
-                address: "Jalan Cyberia 3, Corner Lot",
-                offsetLat: 0.0012,
-                offsetLng: 0.0075,
-                menu: {
-                    signature: [
-                        { name: "BBQ Smoked Bacon-Beef Combo", price: 14.00, desc: "Beef patty combined with crispy beef bacon slices, dripping with rich smoky glaze.", emoji: "🥓" },
-                        { name: "Hickory Pulled Beef Bun", price: 15.00, desc: "Slow-roasted pulled beef shredded into our sweet glaze in a toasted brioche bun.", emoji: "🍔" }
-                    ],
-                    sides: [
-                        { name: "Cheesy Potato Wedges", price: 6.00, desc: "Gently spiced wedges completely covered in liquid cheese sauce.", emoji: "🍟" },
-                        { name: "Iced Lemon Tea", price: 3.00, desc: "Sweet and chilled lemon brew.", emoji: "🥤" }
-                    ]
-                }
-            }
-        ];
+        // Base Burger Stall Database loaded from shared JSON file.
+        const baseStallDatabase = <?php echo json_encode($baseStallDatabase, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT); ?>;
 
         let dynamicallyPositionedStalls = [];
 
