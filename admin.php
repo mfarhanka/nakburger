@@ -3,24 +3,43 @@ session_start();
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR . 'db.php';
 
-function parseMenuItems(string $jsonText): array
+function parseMenuItemsFromPost(string $prefix, string $defaultEmoji): array
 {
-    $decoded = json_decode($jsonText, true);
-    if (!is_array($decoded)) {
-        throw new RuntimeException('Menu JSON must be a valid JSON array.');
+    $names = $_POST[$prefix . '_name'] ?? [];
+    $prices = $_POST[$prefix . '_price'] ?? [];
+    $descs = $_POST[$prefix . '_desc'] ?? [];
+    $emojis = $_POST[$prefix . '_emoji'] ?? [];
+
+    if (!is_array($names) || !is_array($prices) || !is_array($descs) || !is_array($emojis)) {
+        throw new RuntimeException('Invalid menu input format.');
     }
 
+    $maxRows = max(count($names), count($prices), count($descs), count($emojis));
     $items = [];
-    foreach ($decoded as $item) {
-        if (!is_array($item)) {
-            throw new RuntimeException('Every menu item must be an object.');
+
+    for ($i = 0; $i < $maxRows; $i++) {
+        $name = trim((string)($names[$i] ?? ''));
+        $desc = trim((string)($descs[$i] ?? ''));
+        $emoji = trim((string)($emojis[$i] ?? $defaultEmoji));
+        $priceRaw = trim((string)($prices[$i] ?? '0'));
+
+        if ($name === '' && $desc === '' && $priceRaw === '' && $emoji === '') {
+            continue;
+        }
+
+        if ($name === '') {
+            throw new RuntimeException('Menu item name is required when a row is filled.');
+        }
+
+        if ($priceRaw !== '' && !is_numeric($priceRaw)) {
+            throw new RuntimeException('Menu item price must be numeric.');
         }
 
         $items[] = [
-            'name' => trim((string)($item['name'] ?? '')),
-            'price' => (float)($item['price'] ?? 0),
-            'desc' => trim((string)($item['desc'] ?? '')),
-            'emoji' => trim((string)($item['emoji'] ?? '🍔')),
+            'name' => $name,
+            'price' => (float)($priceRaw === '' ? 0 : $priceRaw),
+            'desc' => $desc,
+            'emoji' => $emoji === '' ? $defaultEmoji : $emoji,
         ];
     }
 
@@ -66,8 +85,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $address = trim((string)($_POST['address'] ?? ''));
             $offsetLat = (float)($_POST['offsetLat'] ?? 0);
             $offsetLng = (float)($_POST['offsetLng'] ?? 0);
-            $signature = parseMenuItems((string)($_POST['signatureMenu'] ?? '[]'));
-            $sides = parseMenuItems((string)($_POST['sidesMenu'] ?? '[]'));
+            $signature = parseMenuItemsFromPost('signature', '🍔');
+            $sides = parseMenuItemsFromPost('sides', '🥤');
 
             if ($name === '' || $type === '' || $address === '') {
                 throw new RuntimeException('Name, type, and address are required.');
@@ -160,6 +179,16 @@ $defaultStall = [
 ];
 
 $formStall = $editingStall ?: $defaultStall;
+$signatureRows = $formStall['menu']['signature'] ?? [];
+$sidesRows = $formStall['menu']['sides'] ?? [];
+
+if (!$signatureRows) {
+    $signatureRows = [['name' => '', 'price' => '', 'desc' => '', 'emoji' => '🍔']];
+}
+
+if (!$sidesRows) {
+    $sidesRows = [['name' => '', 'price' => '', 'desc' => '', 'emoji' => '🥤']];
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -187,10 +216,10 @@ $formStall = $editingStall ?: $defaultStall;
             border: 1px solid rgba(0, 0, 0, 0.06);
         }
 
-        textarea.code {
-            font-family: Consolas, Monaco, monospace;
-            min-height: 170px;
-            font-size: 13px;
+        .menu-row {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
         }
     </style>
 </head>
@@ -313,13 +342,71 @@ $formStall = $editingStall ?: $defaultStall;
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label">Signature Menu JSON</label>
-                            <textarea class="form-control code" name="signatureMenu"><?= htmlspecialchars(json_encode($formStall['menu']['signature'] ?? [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?></textarea>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label class="form-label mb-0">Signature Menu Items</label>
+                                <button type="button" class="btn btn-sm btn-outline-dark add-menu-row" data-prefix="signature" data-emoji="🍔">+ Add Item</button>
+                            </div>
+                            <div id="signatureRows" class="d-flex flex-column gap-2">
+                                <?php foreach ($signatureRows as $item): ?>
+                                    <div class="menu-row p-2">
+                                        <div class="row g-2 align-items-end">
+                                            <div class="col-4">
+                                                <label class="form-label small">Name</label>
+                                                <input class="form-control form-control-sm" name="signature_name[]" value="<?= htmlspecialchars((string)($item['name'] ?? '')) ?>" placeholder="Menu name">
+                                            </div>
+                                            <div class="col-2">
+                                                <label class="form-label small">Price</label>
+                                                <input class="form-control form-control-sm" type="number" min="0" step="0.1" name="signature_price[]" value="<?= htmlspecialchars((string)($item['price'] ?? '')) ?>" placeholder="0.0">
+                                            </div>
+                                            <div class="col-2">
+                                                <label class="form-label small">Emoji</label>
+                                                <input class="form-control form-control-sm" name="signature_emoji[]" value="<?= htmlspecialchars((string)($item['emoji'] ?? '🍔')) ?>" placeholder="🍔">
+                                            </div>
+                                            <div class="col-3">
+                                                <label class="form-label small">Description</label>
+                                                <input class="form-control form-control-sm" name="signature_desc[]" value="<?= htmlspecialchars((string)($item['desc'] ?? '')) ?>" placeholder="Short description">
+                                            </div>
+                                            <div class="col-1 d-grid">
+                                                <button type="button" class="btn btn-sm btn-outline-danger remove-menu-row">x</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label">Sides/Drinks Menu JSON</label>
-                            <textarea class="form-control code" name="sidesMenu"><?= htmlspecialchars(json_encode($formStall['menu']['sides'] ?? [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) ?></textarea>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label class="form-label mb-0">Sides/Drinks Items</label>
+                                <button type="button" class="btn btn-sm btn-outline-dark add-menu-row" data-prefix="sides" data-emoji="🥤">+ Add Item</button>
+                            </div>
+                            <div id="sidesRows" class="d-flex flex-column gap-2">
+                                <?php foreach ($sidesRows as $item): ?>
+                                    <div class="menu-row p-2">
+                                        <div class="row g-2 align-items-end">
+                                            <div class="col-4">
+                                                <label class="form-label small">Name</label>
+                                                <input class="form-control form-control-sm" name="sides_name[]" value="<?= htmlspecialchars((string)($item['name'] ?? '')) ?>" placeholder="Menu name">
+                                            </div>
+                                            <div class="col-2">
+                                                <label class="form-label small">Price</label>
+                                                <input class="form-control form-control-sm" type="number" min="0" step="0.1" name="sides_price[]" value="<?= htmlspecialchars((string)($item['price'] ?? '')) ?>" placeholder="0.0">
+                                            </div>
+                                            <div class="col-2">
+                                                <label class="form-label small">Emoji</label>
+                                                <input class="form-control form-control-sm" name="sides_emoji[]" value="<?= htmlspecialchars((string)($item['emoji'] ?? '🥤')) ?>" placeholder="🥤">
+                                            </div>
+                                            <div class="col-3">
+                                                <label class="form-label small">Description</label>
+                                                <input class="form-control form-control-sm" name="sides_desc[]" value="<?= htmlspecialchars((string)($item['desc'] ?? '')) ?>" placeholder="Short description">
+                                            </div>
+                                            <div class="col-1 d-grid">
+                                                <button type="button" class="btn btn-sm btn-outline-danger remove-menu-row">x</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
                         </div>
 
                         <button class="btn btn-dark w-100" type="submit">Save Stall</button>
@@ -328,5 +415,72 @@ $formStall = $editingStall ?: $defaultStall;
             </div>
         </div>
     </div>
+
+    <script>
+        function createMenuRow(prefix, defaultEmoji) {
+            return `
+                <div class="menu-row p-2">
+                    <div class="row g-2 align-items-end">
+                        <div class="col-4">
+                            <label class="form-label small">Name</label>
+                            <input class="form-control form-control-sm" name="${prefix}_name[]" placeholder="Menu name">
+                        </div>
+                        <div class="col-2">
+                            <label class="form-label small">Price</label>
+                            <input class="form-control form-control-sm" type="number" min="0" step="0.1" name="${prefix}_price[]" placeholder="0.0">
+                        </div>
+                        <div class="col-2">
+                            <label class="form-label small">Emoji</label>
+                            <input class="form-control form-control-sm" name="${prefix}_emoji[]" value="${defaultEmoji}" placeholder="${defaultEmoji}">
+                        </div>
+                        <div class="col-3">
+                            <label class="form-label small">Description</label>
+                            <input class="form-control form-control-sm" name="${prefix}_desc[]" placeholder="Short description">
+                        </div>
+                        <div class="col-1 d-grid">
+                            <button type="button" class="btn btn-sm btn-outline-danger remove-menu-row">x</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        document.addEventListener('click', function(event) {
+            const addBtn = event.target.closest('.add-menu-row');
+            if (addBtn) {
+                const prefix = addBtn.dataset.prefix;
+                const emoji = addBtn.dataset.emoji || '';
+                const target = document.getElementById(prefix + 'Rows');
+                if (target) {
+                    target.insertAdjacentHTML('beforeend', createMenuRow(prefix, emoji));
+                }
+                return;
+            }
+
+            const removeBtn = event.target.closest('.remove-menu-row');
+            if (!removeBtn) {
+                return;
+            }
+
+            const row = removeBtn.closest('.menu-row');
+            const container = row ? row.parentElement : null;
+            if (!row || !container) {
+                return;
+            }
+
+            if (container.children.length > 1) {
+                row.remove();
+                return;
+            }
+
+            row.querySelectorAll('input').forEach(function(input) {
+                if (input.name.endsWith('_emoji[]')) {
+                    input.value = '';
+                } else {
+                    input.value = '';
+                }
+            });
+        });
+    </script>
 </body>
 </html>
