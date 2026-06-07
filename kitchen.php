@@ -12,22 +12,22 @@ try {
         if ($action === 'update_status') {
             $orderId = (int)($_POST['order_id'] ?? 0);
             $status = (string)($_POST['status'] ?? '');
-            $stallFilterFromPost = (int)($_POST['stall_filter'] ?? 0);
+            $stallFromPost = (int)($_POST['stall'] ?? 0);
 
             if ($orderId > 0) {
                 updateOrderStatus($pdo, $orderId, $status);
             }
 
-            header('Location: kitchen.php?stall=' . max(0, $stallFilterFromPost));
+            header('Location: kitchen.php?stall=' . max(0, $stallFromPost));
             exit;
         }
     }
 
-    $stallFilter = (int)($_GET['stall'] ?? 0);
-    $stallFilter = max(0, $stallFilter);
+    $stallId = (int)($_GET['stall'] ?? 0);
+    $stallId = max(0, $stallId);
 
-    $stalls = fetchAllStalls($pdo);
-    $orders = fetchKitchenOrders($pdo, 150, $stallFilter);
+    $stallContext = $stallId > 0 ? fetchStallById($pdo, $stallId) : null;
+    $orders = fetchKitchenOrders($pdo, 150, $stallId);
 } catch (Throwable $e) {
     http_response_code(500);
     echo 'Failed to load kitchen orders: ' . htmlspecialchars($e->getMessage());
@@ -67,7 +67,11 @@ try {
         <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
             <div>
                 <h1 class="brand mb-1"><i class="bi bi-egg-fried text-warning"></i> NakBurger Kitchen</h1>
-                <p class="text-secondary mb-0">Live order board for kitchen team. Auto-refresh every 15 seconds.</p>
+                <?php if ($stallContext): ?>
+                    <p class="text-secondary mb-0">Kitchen board for <?= htmlspecialchars((string)$stallContext['name']) ?>. Auto-refresh every 15 seconds.</p>
+                <?php else: ?>
+                    <p class="text-secondary mb-0">Live order board for all stalls. Auto-refresh every 15 seconds.</p>
+                <?php endif; ?>
             </div>
             <div class="d-flex gap-2">
                 <a class="btn btn-outline-dark" href="index.php"><i class="bi bi-arrow-left"></i> Back to App</a>
@@ -81,17 +85,11 @@ try {
                     <h5 class="fw-bold mb-0">Incoming Orders (<?= count($orders) ?>)</h5>
                     <span class="badge text-bg-dark px-3 py-2 mt-2">Kitchen View</span>
                 </div>
-                <form method="get" class="d-flex align-items-center gap-2">
-                    <label for="stallFilter" class="form-label mb-0 fw-semibold">Filter Stall</label>
-                    <select id="stallFilter" name="stall" class="form-select" style="min-width: 230px;" onchange="this.form.submit()">
-                        <option value="0" <?= $stallFilter === 0 ? 'selected' : '' ?>>All stalls</option>
-                        <?php foreach ($stalls as $stall): ?>
-                            <option value="<?= (int)$stall['id'] ?>" <?= $stallFilter === (int)$stall['id'] ? 'selected' : '' ?>>
-                                #<?= (int)$stall['id'] ?> - <?= htmlspecialchars((string)$stall['name']) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </form>
+                <?php if ($stallContext): ?>
+                    <span class="badge text-bg-warning text-dark px-3 py-2">Stall #<?= (int)$stallContext['id'] ?>: <?= htmlspecialchars((string)$stallContext['name']) ?></span>
+                <?php else: ?>
+                    <span class="badge text-bg-secondary px-3 py-2">All Stalls</span>
+                <?php endif; ?>
             </div>
         </div>
 
@@ -130,7 +128,7 @@ try {
                         <form method="post" class="d-flex flex-wrap gap-2 mb-3">
                             <input type="hidden" name="action" value="update_status">
                             <input type="hidden" name="order_id" value="<?= (int)$order['id'] ?>">
-                            <input type="hidden" name="stall_filter" value="<?= (int)$stallFilter ?>">
+                            <input type="hidden" name="stall" value="<?= (int)$stallId ?>">
 
                             <button type="submit" name="status" value="received" class="btn btn-sm <?= $status === 'received' ? 'btn-warning' : 'btn-outline-warning' ?>">Received</button>
                             <button type="submit" name="status" value="preparing" class="btn btn-sm <?= $status === 'preparing' ? 'btn-primary' : 'btn-outline-primary' ?>">Preparing</button>

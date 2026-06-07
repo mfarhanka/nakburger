@@ -210,7 +210,7 @@ if (!$sidesRows) {
             </div>
             <div class="d-flex gap-2">
                 <a class="btn btn-outline-dark" href="index.php"><i class="bi bi-arrow-left"></i> Back to App</a>
-                <a class="btn btn-outline-info" href="kitchen.php"><i class="bi bi-egg-fried"></i> Kitchen</a>
+                <a class="btn btn-outline-info" href="kitchen.php<?= $ownerStall ? '?stall=' . (int)$ownerStall['id'] : '' ?>"><i class="bi bi-egg-fried"></i> Kitchen</a>
                 <a class="btn btn-outline-secondary" href="admin.php"><i class="bi bi-shield-lock"></i> Admin</a>
             </div>
         </div>
