@@ -5,7 +5,29 @@ require_once __DIR__ . DIRECTORY_SEPARATOR . 'includes' . DIRECTORY_SEPARATOR . 
 
 try {
     $pdo = getDbConnection();
-    $orders = fetchKitchenOrders($pdo, 150);
+
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        $action = $_POST['action'] ?? '';
+
+        if ($action === 'update_status') {
+            $orderId = (int)($_POST['order_id'] ?? 0);
+            $status = (string)($_POST['status'] ?? '');
+            $stallFilterFromPost = (int)($_POST['stall_filter'] ?? 0);
+
+            if ($orderId > 0) {
+                updateOrderStatus($pdo, $orderId, $status);
+            }
+
+            header('Location: kitchen.php?stall=' . max(0, $stallFilterFromPost));
+            exit;
+        }
+    }
+
+    $stallFilter = (int)($_GET['stall'] ?? 0);
+    $stallFilter = max(0, $stallFilter);
+
+    $stalls = fetchAllStalls($pdo);
+    $orders = fetchKitchenOrders($pdo, 150, $stallFilter);
 } catch (Throwable $e) {
     http_response_code(500);
     echo 'Failed to load kitchen orders: ' . htmlspecialchars($e->getMessage());
@@ -54,9 +76,22 @@ try {
         </div>
 
         <div class="glass p-3 p-lg-4 shadow-sm mb-4">
-            <div class="d-flex justify-content-between align-items-center">
-                <h5 class="fw-bold mb-0">Incoming Orders (<?= count($orders) ?>)</h5>
-                <span class="badge text-bg-dark px-3 py-2">Kitchen View</span>
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+                <div>
+                    <h5 class="fw-bold mb-0">Incoming Orders (<?= count($orders) ?>)</h5>
+                    <span class="badge text-bg-dark px-3 py-2 mt-2">Kitchen View</span>
+                </div>
+                <form method="get" class="d-flex align-items-center gap-2">
+                    <label for="stallFilter" class="form-label mb-0 fw-semibold">Filter Stall</label>
+                    <select id="stallFilter" name="stall" class="form-select" style="min-width: 230px;" onchange="this.form.submit()">
+                        <option value="0" <?= $stallFilter === 0 ? 'selected' : '' ?>>All stalls</option>
+                        <?php foreach ($stalls as $stall): ?>
+                            <option value="<?= (int)$stall['id'] ?>" <?= $stallFilter === (int)$stall['id'] ? 'selected' : '' ?>>
+                                #<?= (int)$stall['id'] ?> - <?= htmlspecialchars((string)$stall['name']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </form>
             </div>
         </div>
 
@@ -69,6 +104,17 @@ try {
         <?php else: ?>
             <div class="d-flex flex-column gap-3">
                 <?php foreach ($orders as $order): ?>
+                    <?php
+                        $status = strtolower((string)$order['status']);
+                        $statusBadgeClass = 'text-bg-secondary';
+                        if ($status === 'received') {
+                            $statusBadgeClass = 'text-bg-warning text-dark';
+                        } elseif ($status === 'preparing') {
+                            $statusBadgeClass = 'text-bg-primary';
+                        } elseif ($status === 'ready') {
+                            $statusBadgeClass = 'text-bg-success';
+                        }
+                    ?>
                     <div class="glass p-3 p-lg-4 shadow-sm">
                         <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 mb-2">
                             <div>
@@ -76,10 +122,20 @@ try {
                                 <div class="fw-bold fs-5"><?= htmlspecialchars((string)$order['orderCode']) ?></div>
                             </div>
                             <div class="text-md-end">
-                                <div class="badge text-bg-warning text-dark mb-1"><?= htmlspecialchars((string)$order['status']) ?></div>
+                                <div class="badge <?= $statusBadgeClass ?> mb-1"><?= htmlspecialchars((string)$order['status']) ?></div>
                                 <div class="small text-secondary"><?= htmlspecialchars((string)$order['createdAt']) ?></div>
                             </div>
                         </div>
+
+                        <form method="post" class="d-flex flex-wrap gap-2 mb-3">
+                            <input type="hidden" name="action" value="update_status">
+                            <input type="hidden" name="order_id" value="<?= (int)$order['id'] ?>">
+                            <input type="hidden" name="stall_filter" value="<?= (int)$stallFilter ?>">
+
+                            <button type="submit" name="status" value="received" class="btn btn-sm <?= $status === 'received' ? 'btn-warning' : 'btn-outline-warning' ?>">Received</button>
+                            <button type="submit" name="status" value="preparing" class="btn btn-sm <?= $status === 'preparing' ? 'btn-primary' : 'btn-outline-primary' ?>">Preparing</button>
+                            <button type="submit" name="status" value="ready" class="btn btn-sm <?= $status === 'ready' ? 'btn-success' : 'btn-outline-success' ?>">Ready</button>
+                        </form>
 
                         <div class="row g-3 mb-2">
                             <div class="col-md-6">

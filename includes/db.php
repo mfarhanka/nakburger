@@ -329,14 +329,36 @@ function createOrder(PDO $pdo, int $stallId, string $stallName, array $items, st
     ];
 }
 
-function fetchKitchenOrders(PDO $pdo, int $limit = 100): array
+function updateOrderStatus(PDO $pdo, int $orderId, string $status): void
+{
+    $allowedStatuses = ['received', 'preparing', 'ready'];
+    $status = strtolower(trim($status));
+
+    if (!in_array($status, $allowedStatuses, true)) {
+        throw new RuntimeException('Invalid kitchen status.');
+    }
+
+    $stmt = $pdo->prepare('UPDATE orders SET status = :status WHERE id = :id');
+    $stmt->execute([
+        ':status' => $status,
+        ':id' => $orderId,
+    ]);
+}
+
+function fetchKitchenOrders(PDO $pdo, int $limit = 100, int $stallId = 0): array
 {
     $safeLimit = max(1, min(500, $limit));
+    $safeStallId = max(0, $stallId);
 
-    $stmt = $pdo->query(
-        'SELECT id, order_code, stall_id, stall_name, customer_name, total_amount, status, order_items, created_at '
-        . 'FROM orders ORDER BY id DESC LIMIT ' . $safeLimit
-    );
+    $baseSql = 'SELECT id, order_code, stall_id, stall_name, customer_name, total_amount, status, order_items, created_at '
+        . 'FROM orders';
+
+    if ($safeStallId > 0) {
+        $stmt = $pdo->prepare($baseSql . ' WHERE stall_id = :stall_id ORDER BY id DESC LIMIT ' . $safeLimit);
+        $stmt->execute([':stall_id' => $safeStallId]);
+    } else {
+        $stmt = $pdo->query($baseSql . ' ORDER BY id DESC LIMIT ' . $safeLimit);
+    }
     $rows = $stmt->fetchAll();
 
     $orders = [];
