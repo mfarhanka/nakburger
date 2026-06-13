@@ -246,7 +246,7 @@ $staffForm = $editingStaff ?: [
     'isSuspended' => false,
 ];
 
-$publicOrderUrl = $ownerStall ? 'stall.php?stall=' . (int)$ownerStall['id'] : '';
+$publicOrderUrl = $ownerStall ? stallPublicPath((int)$ownerStall['id'], (string)$ownerStall['name']) : '';
 
 if (!$signatureRows) {
     $signatureRows = [['name' => '', 'price' => '', 'desc' => '', 'emoji' => '🍔']];

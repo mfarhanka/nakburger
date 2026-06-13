@@ -676,6 +676,17 @@ try {
         }
 
         // Render Stalls into Sidebar List
+        function slugifyText(value) {
+            return String(value || '')
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-+|-+$/g, '') || 'stall';
+        }
+
+        function stallPublicPath(stall) {
+            return `stall/${stall.id}-${slugifyText(stall.name)}`;
+        }
+
         function renderStallsList() {
             const listContainer = document.getElementById('stallList');
             listContainer.innerHTML = '';
@@ -720,7 +731,7 @@ try {
                             <div class="text-warning mb-2"><i class="bi bi-star-fill"></i> <strong class="text-dark">${stall.rating}</strong> <span class="text-muted small">(${stall.reviews})</span></div>
                             <div class="d-grid gap-2">
                                 <button class="btn btn-warning btn-sm fw-bold rounded-3" onclick="openStallMenu(event, ${stall.id})">Order Here</button>
-                                <a class="btn btn-outline-dark btn-sm fw-bold rounded-3" href="stall.php?stall=${stall.id}" onclick="event.stopPropagation();">Open Page</a>
+                                <a class="btn btn-outline-dark btn-sm fw-bold rounded-3" href="${stallPublicPath(stall)}" onclick="event.stopPropagation();">Open Page</a>
                             </div>
                         </div>
                     </div>

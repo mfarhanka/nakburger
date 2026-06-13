@@ -14,21 +14,38 @@ try {
 $stallId = (int)($_GET['stall'] ?? ($_GET['id'] ?? 0));
 $stall = $stallId > 0 ? fetchStallById($pdo, $stallId) : null;
 
+$basePath = rtrim(str_replace('\\', '/', dirname((string)($_SERVER['SCRIPT_NAME'] ?? ''))), '/');
+if ($basePath === '/' || $basePath === '\\') {
+    $basePath = '';
+}
+
+$stallPublicPath = $stall ? stallPublicPath((int)$stall['id'], (string)$stall['name']) : 'stall';
+$publicOrderUrl = $stallPublicPath;
+
+$requestUri = (string)($_SERVER['REQUEST_URI'] ?? '');
+$requestPath = (string)(parse_url($requestUri, PHP_URL_PATH) ?? '');
+$normalizedRequestPath = rtrim($requestPath, '/');
+$expectedRequestPath = rtrim($basePath . '/' . $stallPublicPath, '/');
+
+if ($stall && $expectedRequestPath !== '' && $normalizedRequestPath !== $expectedRequestPath) {
+    header('Location: /' . ltrim($expectedRequestPath, '/'), true, 301);
+    exit;
+}
+
 if (!$stall) {
     http_response_code(404);
 }
 
 $signatureItems = $stall['menu']['signature'] ?? [];
 $sideItems = $stall['menu']['sides'] ?? [];
-$publicOrderUrl = $stall ? 'stall.php?stall=' . (int)$stall['id'] : 'index.php';
 
 $isSecure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (int)($_SERVER['SERVER_PORT'] ?? 0) === 443;
 $scheme = $isSecure ? 'https' : 'http';
 $host = trim((string)($_SERVER['HTTP_HOST'] ?? 'localhost'));
 $baseUrl = $scheme . '://' . $host;
 $canonicalUrl = $stall
-    ? $baseUrl . '/stall.php?stall=' . (int)$stall['id']
-    : $baseUrl . '/stall.php';
+    ? $baseUrl . '/' . ltrim($basePath . '/' . $stallPublicPath, '/')
+    : $baseUrl . '/' . ltrim($basePath . '/stall', '/');
 
 $metaTitle = $stall
     ? (string)$stall['name'] . ' | NakBurger Stall Menu & Order'

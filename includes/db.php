@@ -133,6 +133,20 @@ SQL;
     $pdo->exec($sql);
 }
 
+function slugifyText(string $value): string
+{
+    $value = strtolower(trim($value));
+    $value = preg_replace('/[^a-z0-9]+/', '-', $value) ?? '';
+    $value = trim($value, '-');
+
+    return $value !== '' ? $value : 'stall';
+}
+
+function stallPublicPath(int $stallId, string $stallName): string
+{
+    return 'stall/' . max(0, $stallId) . '-' . slugifyText($stallName);
+}
+
 function rowToStallPayload(array $row): array
 {
     $signature = json_decode((string)($row['menu_signature'] ?? '[]'), true);
