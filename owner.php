@@ -144,6 +144,76 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: owner.php');
         exit;
     }
+
+    if ($action === 'save_staff') {
+        $stallId = (int)($_SESSION['owner_stall_id'] ?? 0);
+
+        try {
+            if ($stallId <= 0) {
+                throw new RuntimeException('Owner session expired. Please log in again.');
+            }
+
+            $staffId = (int)($_POST['staff_id'] ?? 0);
+            $staffName = trim((string)($_POST['staff_name'] ?? ''));
+            $staffUsername = trim((string)($_POST['staff_username'] ?? ''));
+            $staffPassword = (string)($_POST['staff_password'] ?? '');
+
+            saveStallStaff($pdo, $stallId, $staffId, $staffName, $staffUsername, $staffPassword);
+            $_SESSION['owner_flash'] = ['type' => 'success', 'message' => $staffId > 0 ? 'Staff account updated.' : 'Staff account created.'];
+        } catch (Throwable $e) {
+            $_SESSION['owner_flash'] = ['type' => 'danger', 'message' => $e->getMessage()];
+        }
+
+        header('Location: owner.php');
+        exit;
+    }
+
+    if ($action === 'delete_staff') {
+        $stallId = (int)($_SESSION['owner_stall_id'] ?? 0);
+
+        try {
+            if ($stallId <= 0) {
+                throw new RuntimeException('Owner session expired. Please log in again.');
+            }
+
+            $staffId = (int)($_POST['staff_id'] ?? 0);
+            if ($staffId <= 0) {
+                throw new RuntimeException('Invalid staff record.');
+            }
+
+            deleteStallStaff($pdo, $stallId, $staffId);
+            $_SESSION['owner_flash'] = ['type' => 'success', 'message' => 'Staff account deleted.'];
+        } catch (Throwable $e) {
+            $_SESSION['owner_flash'] = ['type' => 'danger', 'message' => $e->getMessage()];
+        }
+
+        header('Location: owner.php');
+        exit;
+    }
+
+    if ($action === 'suspend_staff' || $action === 'activate_staff') {
+        $stallId = (int)($_SESSION['owner_stall_id'] ?? 0);
+
+        try {
+            if ($stallId <= 0) {
+                throw new RuntimeException('Owner session expired. Please log in again.');
+            }
+
+            $staffId = (int)($_POST['staff_id'] ?? 0);
+            if ($staffId <= 0) {
+                throw new RuntimeException('Invalid staff record.');
+            }
+
+            $isSuspended = $action === 'suspend_staff';
+            setStallStaffSuspended($pdo, $stallId, $staffId, $isSuspended);
+            $_SESSION['owner_flash'] = ['type' => 'success', 'message' => $isSuspended ? 'Staff account suspended.' : 'Staff account activated.'];
+        } catch (Throwable $e) {
+            $_SESSION['owner_flash'] = ['type' => 'danger', 'message' => $e->getMessage()];
+        }
+
+        header('Location: owner.php');
+        exit;
+    }
 }
 
 $flash = $_SESSION['owner_flash'] ?? null;
@@ -159,6 +229,22 @@ if ($stallId > 0 && !$ownerStall) {
 
 $signatureRows = $ownerStall['menu']['signature'] ?? [];
 $sidesRows = $ownerStall['menu']['sides'] ?? [];
+$staffMembers = $ownerStall ? fetchStallStaff($pdo, (int)$ownerStall['id']) : [];
+$staffEditId = (int)($_GET['staff'] ?? 0);
+$editingStaff = null;
+foreach ($staffMembers as $staffMember) {
+    if ((int)$staffMember['id'] === $staffEditId) {
+        $editingStaff = $staffMember;
+        break;
+    }
+}
+
+$staffForm = $editingStaff ?: [
+    'id' => 0,
+    'name' => '',
+    'username' => '',
+    'isSuspended' => false,
+];
 
 if (!$signatureRows) {
     $signatureRows = [['name' => '', 'price' => '', 'desc' => '', 'emoji' => '🍔']];
@@ -370,6 +456,105 @@ if (!$sidesRows) {
 
                             <button class="btn btn-dark w-100" type="submit">Save Menu Changes</button>
                         </form>
+                    </div>
+
+                    <div class="glass p-4 shadow-sm mt-4" id="staffPanel">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 class="fw-bold mb-0">Staff Management</h5>
+                            <span class="badge text-bg-dark">Total: <?= count($staffMembers) ?></span>
+                        </div>
+
+                        <div class="border rounded-3 p-3 bg-light-subtle mb-3">
+                            <h6 class="fw-bold mb-3"><?= $editingStaff ? 'Edit Staff #' . (int)$staffForm['id'] : 'Add New Staff' ?></h6>
+                            <form method="post">
+                                <input type="hidden" name="action" value="save_staff">
+                                <input type="hidden" name="staff_id" value="<?= (int)$staffForm['id'] ?>">
+
+                                <div class="row g-2">
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Staff Name</label>
+                                        <input class="form-control" name="staff_name" required value="<?= htmlspecialchars((string)$staffForm['name']) ?>" placeholder="Staff full name">
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Username</label>
+                                        <input class="form-control" name="staff_username" required value="<?= htmlspecialchars((string)$staffForm['username']) ?>" placeholder="staff.username">
+                                    </div>
+                                </div>
+
+                                <div class="mb-2">
+                                    <label class="form-label">Password</label>
+                                    <input class="form-control" type="password" name="staff_password" placeholder="<?= $editingStaff ? 'Leave blank to keep current password' : 'Set password' ?>">
+                                </div>
+
+                                <div class="d-flex gap-2 mt-3">
+                                    <button class="btn btn-primary" type="submit"><?= $editingStaff ? 'Update Staff' : 'Add Staff' ?></button>
+                                    <?php if ($editingStaff): ?>
+                                        <a class="btn btn-outline-secondary" href="owner.php#staffPanel">Cancel Edit</a>
+                                    <?php endif; ?>
+                                </div>
+                            </form>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Name</th>
+                                        <th>Username</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if (!$staffMembers): ?>
+                                        <tr>
+                                            <td colspan="5" class="text-center text-muted py-4">No staff accounts yet.</td>
+                                        </tr>
+                                    <?php endif; ?>
+
+                                    <?php foreach ($staffMembers as $staffMember): ?>
+                                        <tr>
+                                            <td>#<?= (int)$staffMember['id'] ?></td>
+                                            <td class="fw-semibold"><?= htmlspecialchars((string)$staffMember['name']) ?></td>
+                                            <td>@<?= htmlspecialchars((string)$staffMember['username']) ?></td>
+                                            <td>
+                                                <?php if (!empty($staffMember['isSuspended'])): ?>
+                                                    <span class="badge text-bg-danger">Suspended</span>
+                                                <?php else: ?>
+                                                    <span class="badge text-bg-success">Active</span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td>
+                                                <div class="d-flex flex-wrap gap-2">
+                                                    <a class="btn btn-sm btn-outline-primary" href="owner.php?staff=<?= (int)$staffMember['id'] ?>#staffPanel">Edit</a>
+
+                                                    <?php if (!empty($staffMember['isSuspended'])): ?>
+                                                        <form method="post">
+                                                            <input type="hidden" name="action" value="activate_staff">
+                                                            <input type="hidden" name="staff_id" value="<?= (int)$staffMember['id'] ?>">
+                                                            <button class="btn btn-sm btn-outline-success" type="submit">Activate</button>
+                                                        </form>
+                                                    <?php else: ?>
+                                                        <form method="post">
+                                                            <input type="hidden" name="action" value="suspend_staff">
+                                                            <input type="hidden" name="staff_id" value="<?= (int)$staffMember['id'] ?>">
+                                                            <button class="btn btn-sm btn-outline-warning" type="submit">Suspend</button>
+                                                        </form>
+                                                    <?php endif; ?>
+
+                                                    <form method="post" onsubmit="return confirm('Delete this staff account?');">
+                                                        <input type="hidden" name="action" value="delete_staff">
+                                                        <input type="hidden" name="staff_id" value="<?= (int)$staffMember['id'] ?>">
+                                                        <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+                                                    </form>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>

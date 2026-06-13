@@ -37,6 +37,7 @@ function getDbConnection(): PDO
 
     ensureStallSchema($pdo);
     ensureOwnerSchema($pdo);
+    ensureStaffSchema($pdo);
     ensureOrderSchema($pdo);
 
     return $pdo;
@@ -81,6 +82,27 @@ CREATE TABLE IF NOT EXISTS stall_owners (
     UNIQUE KEY uniq_stall_owner_stall (stall_id),
     UNIQUE KEY uniq_stall_owner_username (username),
     CONSTRAINT fk_stall_owners_stall FOREIGN KEY (stall_id) REFERENCES stalls (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+SQL;
+
+    $pdo->exec($sql);
+}
+
+function ensureStaffSchema(PDO $pdo): void
+{
+    $sql = <<<'SQL'
+CREATE TABLE IF NOT EXISTS stall_staff (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    stall_id INT UNSIGNED NOT NULL,
+    staff_name VARCHAR(191) NOT NULL,
+    username VARCHAR(100) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    is_suspended TINYINT(1) NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uniq_stall_staff_username (stall_id, username),
+    CONSTRAINT fk_stall_staff_stall FOREIGN KEY (stall_id) REFERENCES stalls (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 SQL;
 
@@ -260,6 +282,124 @@ function authenticateStallOwner(PDO $pdo, string $username, string $password): ?
     }
 
     return rowToStallPayload($row);
+}
+
+function fetchStallStaff(PDO $pdo, int $stallId): array
+{
+    $stmt = $pdo->prepare(
+        'SELECT id, stall_id, staff_name, username, is_suspended, created_at, updated_at '
+        . 'FROM stall_staff WHERE stall_id = :stall_id ORDER BY id ASC'
+    );
+    $stmt->execute([':stall_id' => $stallId]);
+    $rows = $stmt->fetchAll();
+
+    $staff = [];
+    foreach ($rows as $row) {
+        $staff[] = [
+            'id' => (int)$row['id'],
+            'stallId' => (int)$row['stall_id'],
+            'name' => (string)$row['staff_name'],
+            'username' => (string)$row['username'],
+            'isSuspended' => (int)$row['is_suspended'] === 1,
+            'createdAt' => (string)$row['created_at'],
+            'updatedAt' => (string)$row['updated_at'],
+        ];
+    }
+
+    return $staff;
+}
+
+function saveStallStaff(PDO $pdo, int $stallId, int $staffId, string $name, string $username, string $password): void
+{
+    $name = trim($name);
+    $username = trim($username);
+    $password = trim($password);
+
+    if ($name === '' || $username === '') {
+        throw new RuntimeException('Staff name and username are required.');
+    }
+
+    $existingStaff = null;
+    if ($staffId > 0) {
+        $existingStmt = $pdo->prepare(
+            'SELECT id, password_hash FROM stall_staff WHERE id = :id AND stall_id = :stall_id LIMIT 1'
+        );
+        $existingStmt->execute([':id' => $staffId, ':stall_id' => $stallId]);
+        $existingStaff = $existingStmt->fetch();
+
+        if (!$existingStaff) {
+            throw new RuntimeException('Staff member not found for this stall.');
+        }
+    }
+
+    $duplicateStmt = $pdo->prepare(
+        'SELECT id FROM stall_staff WHERE stall_id = :stall_id AND username = :username AND id <> :id LIMIT 1'
+    );
+    $duplicateStmt->execute([
+        ':stall_id' => $stallId,
+        ':username' => $username,
+        ':id' => $staffId,
+    ]);
+
+    if ($duplicateStmt->fetch()) {
+        throw new RuntimeException('Staff username already exists for this stall.');
+    }
+
+    if (!$existingStaff && $password === '') {
+        throw new RuntimeException('Password is required for a new staff member.');
+    }
+
+    $passwordHash = $existingStaff['password_hash'] ?? null;
+    if ($password !== '') {
+        $passwordHash = password_hash($password, PASSWORD_DEFAULT);
+        if ($passwordHash === false) {
+            throw new RuntimeException('Failed to secure staff password.');
+        }
+    }
+
+    if ($existingStaff) {
+        $updateStmt = $pdo->prepare(
+            'UPDATE stall_staff SET staff_name = :staff_name, username = :username, password_hash = :password_hash '
+            . 'WHERE id = :id AND stall_id = :stall_id'
+        );
+        $updateStmt->execute([
+            ':staff_name' => $name,
+            ':username' => $username,
+            ':password_hash' => $passwordHash,
+            ':id' => $staffId,
+            ':stall_id' => $stallId,
+        ]);
+        return;
+    }
+
+    $insertStmt = $pdo->prepare(
+        'INSERT INTO stall_staff (stall_id, staff_name, username, password_hash, is_suspended) '
+        . 'VALUES (:stall_id, :staff_name, :username, :password_hash, 0)'
+    );
+    $insertStmt->execute([
+        ':stall_id' => $stallId,
+        ':staff_name' => $name,
+        ':username' => $username,
+        ':password_hash' => $passwordHash,
+    ]);
+}
+
+function deleteStallStaff(PDO $pdo, int $stallId, int $staffId): void
+{
+    $stmt = $pdo->prepare('DELETE FROM stall_staff WHERE id = :id AND stall_id = :stall_id');
+    $stmt->execute([':id' => $staffId, ':stall_id' => $stallId]);
+}
+
+function setStallStaffSuspended(PDO $pdo, int $stallId, int $staffId, bool $isSuspended): void
+{
+    $stmt = $pdo->prepare(
+        'UPDATE stall_staff SET is_suspended = :is_suspended WHERE id = :id AND stall_id = :stall_id'
+    );
+    $stmt->execute([
+        ':is_suspended' => $isSuspended ? 1 : 0,
+        ':id' => $staffId,
+        ':stall_id' => $stallId,
+    ]);
 }
 
 function createOrder(PDO $pdo, int $stallId, string $stallName, array $items, string $customerName = 'Guest'): array
