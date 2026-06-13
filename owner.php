@@ -246,6 +246,8 @@ $staffForm = $editingStaff ?: [
     'isSuspended' => false,
 ];
 
+$publicOrderUrl = $ownerStall ? 'stall.php?stall=' . (int)$ownerStall['id'] : '';
+
 if (!$signatureRows) {
     $signatureRows = [['name' => '', 'price' => '', 'desc' => '', 'emoji' => '🍔']];
 }
@@ -347,6 +349,11 @@ if (!$sidesRows) {
                             <div class="fw-semibold fs-5"><?= htmlspecialchars((string)$ownerStall['name']) ?></div>
                             <div class="text-secondary mb-2"><?= htmlspecialchars((string)$ownerStall['address']) ?></div>
                             <span class="badge text-bg-warning text-dark"><?= htmlspecialchars((string)$ownerStall['type']) ?></span>
+                            <div class="mt-3">
+                                <div class="small text-secondary mb-2">Customer order page</div>
+                                <a class="btn btn-sm btn-dark w-100" href="<?= htmlspecialchars($publicOrderUrl) ?>" target="_blank" rel="noopener noreferrer">Open public page</a>
+                                <div class="small text-secondary mt-2">Share this link so customers can order directly from your stall.</div>
+                            </div>
                         </div>
                         <div class="mt-3 small text-secondary">
                             You can update the menu, specialty, stall name, type, and address here. Ratings, review counts, and stall deletion stay in admin control.

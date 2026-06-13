@@ -718,7 +718,10 @@ try {
                         <div class="col-4 text-end">
                             <span class="badge bg-dark rounded-pill py-1.5 px-2.5 small d-inline-block mb-1">${stall.distance} km away</span>
                             <div class="text-warning mb-2"><i class="bi bi-star-fill"></i> <strong class="text-dark">${stall.rating}</strong> <span class="text-muted small">(${stall.reviews})</span></div>
-                            <button class="btn btn-warning btn-sm fw-bold w-100 rounded-3" onclick="openStallMenu(event, ${stall.id})">Order Here</button>
+                            <div class="d-grid gap-2">
+                                <button class="btn btn-warning btn-sm fw-bold rounded-3" onclick="openStallMenu(event, ${stall.id})">Order Here</button>
+                                <a class="btn btn-outline-dark btn-sm fw-bold rounded-3" href="stall.php?stall=${stall.id}" onclick="event.stopPropagation();">Open Page</a>
+                            </div>
                         </div>
                     </div>
                 `;
