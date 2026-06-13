@@ -1,4 +1,7 @@
 RewriteEngine On
 
+# Expose dynamic sitemap as /sitemap.xml.
+RewriteRule ^sitemap\.xml$ sitemap.php [L,QSA,NC]
+
 # Resolve SEO-friendly stall URLs to stall.php.
 RewriteRule ^stall/([0-9]+)(?:-[A-Za-z0-9-]+)?/?$ stall.php?stall=$1 [L,QSA,NC]
