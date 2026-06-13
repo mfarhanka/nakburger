@@ -21,13 +21,79 @@ if (!$stall) {
 $signatureItems = $stall['menu']['signature'] ?? [];
 $sideItems = $stall['menu']['sides'] ?? [];
 $publicOrderUrl = $stall ? 'stall.php?stall=' . (int)$stall['id'] : 'index.php';
+
+$isSecure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (int)($_SERVER['SERVER_PORT'] ?? 0) === 443;
+$scheme = $isSecure ? 'https' : 'http';
+$host = trim((string)($_SERVER['HTTP_HOST'] ?? 'localhost'));
+$baseUrl = $scheme . '://' . $host;
+$canonicalUrl = $stall
+    ? $baseUrl . '/stall.php?stall=' . (int)$stall['id']
+    : $baseUrl . '/stall.php';
+
+$metaTitle = $stall
+    ? (string)$stall['name'] . ' | NakBurger Stall Menu & Order'
+    : 'NakBurger Stall | Not Found';
+
+$metaDescription = $stall
+    ? trim(sprintf(
+        'Order from %s on NakBurger. %s. Located at %s.',
+        (string)$stall['name'],
+        (string)($stall['specialty'] ?: 'Fresh street-style burgers'),
+        (string)$stall['address']
+    ))
+    : 'This NakBurger stall page is not available. Browse active stalls and order online.';
+
+$metaRobots = $stall ? 'index,follow,max-image-preview:large' : 'noindex,follow';
+
+$structuredData = null;
+if ($stall) {
+    $structuredData = [
+        '@context' => 'https://schema.org',
+        '@type' => 'Restaurant',
+        'name' => (string)$stall['name'],
+        'description' => $metaDescription,
+        'url' => $canonicalUrl,
+        'servesCuisine' => 'Burgers',
+        'address' => [
+            '@type' => 'PostalAddress',
+            'streetAddress' => (string)$stall['address'],
+        ],
+        'hasMenu' => $canonicalUrl,
+    ];
+
+    if ((int)$stall['reviews'] > 0) {
+        $structuredData['aggregateRating'] = [
+            '@type' => 'AggregateRating',
+            'ratingValue' => (float)$stall['rating'],
+            'reviewCount' => (int)$stall['reviews'],
+        ];
+    }
+}
+
+$structuredDataJson = $structuredData
+    ? json_encode($structuredData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+    : null;
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= $stall ? htmlspecialchars((string)$stall['name']) . ' Order Page' : 'NakBurger Stall' ?></title>
+    <title><?= htmlspecialchars($metaTitle, ENT_QUOTES, 'UTF-8') ?></title>
+    <meta name="description" content="<?= htmlspecialchars($metaDescription, ENT_QUOTES, 'UTF-8') ?>">
+    <meta name="robots" content="<?= htmlspecialchars($metaRobots, ENT_QUOTES, 'UTF-8') ?>">
+    <link rel="canonical" href="<?= htmlspecialchars($canonicalUrl, ENT_QUOTES, 'UTF-8') ?>">
+    <meta property="og:type" content="<?= $stall ? 'restaurant' : 'website' ?>">
+    <meta property="og:site_name" content="NakBurger">
+    <meta property="og:title" content="<?= htmlspecialchars($metaTitle, ENT_QUOTES, 'UTF-8') ?>">
+    <meta property="og:description" content="<?= htmlspecialchars($metaDescription, ENT_QUOTES, 'UTF-8') ?>">
+    <meta property="og:url" content="<?= htmlspecialchars($canonicalUrl, ENT_QUOTES, 'UTF-8') ?>">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="<?= htmlspecialchars($metaTitle, ENT_QUOTES, 'UTF-8') ?>">
+    <meta name="twitter:description" content="<?= htmlspecialchars($metaDescription, ENT_QUOTES, 'UTF-8') ?>">
+    <?php if ($structuredDataJson): ?>
+        <script type="application/ld+json"><?= $structuredDataJson ?></script>
+    <?php endif; ?>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link rel="preconnect" href="https://fonts.googleapis.com">
