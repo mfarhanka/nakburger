@@ -230,21 +230,6 @@ if ($stallId > 0 && !$ownerStall) {
 $signatureRows = $ownerStall['menu']['signature'] ?? [];
 $sidesRows = $ownerStall['menu']['sides'] ?? [];
 $staffMembers = $ownerStall ? fetchStallStaff($pdo, (int)$ownerStall['id']) : [];
-$staffEditId = (int)($_GET['staff'] ?? 0);
-$editingStaff = null;
-foreach ($staffMembers as $staffMember) {
-    if ((int)$staffMember['id'] === $staffEditId) {
-        $editingStaff = $staffMember;
-        break;
-    }
-}
-
-$staffForm = $editingStaff ?: [
-    'id' => 0,
-    'name' => '',
-    'username' => '',
-    'isSuspended' => false,
-];
 
 $publicOrderUrl = $ownerStall ? stallPublicPath((int)$ownerStall['id'], (string)$ownerStall['name']) : '';
 
@@ -298,7 +283,6 @@ if (!$sidesRows) {
             </div>
             <div class="d-flex gap-2">
                 <a class="btn btn-outline-dark" href="index.php"><i class="bi bi-arrow-left"></i> Back to App</a>
-                <a class="btn btn-outline-info" href="kitchen.php<?= $ownerStall ? '?stall=' . (int)$ownerStall['id'] : '' ?>"><i class="bi bi-egg-fried"></i> Kitchen</a>
                 <a class="btn btn-outline-secondary" href="admin.php"><i class="bi bi-shield-lock"></i> Admin</a>
             </div>
         </div>
@@ -468,38 +452,21 @@ if (!$sidesRows) {
                     <div class="glass p-4 shadow-sm mt-4" id="staffPanel">
                         <div class="d-flex justify-content-between align-items-center mb-3">
                             <h5 class="fw-bold mb-0">Staff Management</h5>
-                            <span class="badge text-bg-dark">Total: <?= count($staffMembers) ?></span>
-                        </div>
-
-                        <div class="border rounded-3 p-3 bg-light-subtle mb-3">
-                            <h6 class="fw-bold mb-3"><?= $editingStaff ? 'Edit Staff #' . (int)$staffForm['id'] : 'Add New Staff' ?></h6>
-                            <form method="post">
-                                <input type="hidden" name="action" value="save_staff">
-                                <input type="hidden" name="staff_id" value="<?= (int)$staffForm['id'] ?>">
-
-                                <div class="row g-2">
-                                    <div class="col-md-6 mb-3">
-                                        <label class="form-label">Staff Name</label>
-                                        <input class="form-control" name="staff_name" required value="<?= htmlspecialchars((string)$staffForm['name']) ?>" placeholder="Staff full name">
-                                    </div>
-                                    <div class="col-md-6 mb-3">
-                                        <label class="form-label">Username</label>
-                                        <input class="form-control" name="staff_username" required value="<?= htmlspecialchars((string)$staffForm['username']) ?>" placeholder="staff.username">
-                                    </div>
-                                </div>
-
-                                <div class="mb-2">
-                                    <label class="form-label">Password</label>
-                                    <input class="form-control" type="password" name="staff_password" placeholder="<?= $editingStaff ? 'Leave blank to keep current password' : 'Set password' ?>">
-                                </div>
-
-                                <div class="d-flex gap-2 mt-3">
-                                    <button class="btn btn-primary" type="submit"><?= $editingStaff ? 'Update Staff' : 'Add Staff' ?></button>
-                                    <?php if ($editingStaff): ?>
-                                        <a class="btn btn-outline-secondary" href="owner.php#staffPanel">Cancel Edit</a>
-                                    <?php endif; ?>
-                                </div>
-                            </form>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="badge text-bg-dark">Total: <?= count($staffMembers) ?></span>
+                                <button
+                                    class="btn btn-sm btn-primary"
+                                    type="button"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#staffModal"
+                                    data-staff-id="0"
+                                    data-staff-name=""
+                                    data-staff-username=""
+                                    data-staff-title="Add New Staff"
+                                    data-staff-submit="Add Staff"
+                                    data-staff-password-placeholder="Set password"
+                                >Add Staff</button>
+                            </div>
                         </div>
 
                         <div class="table-responsive">
@@ -534,7 +501,18 @@ if (!$sidesRows) {
                                             </td>
                                             <td>
                                                 <div class="d-flex flex-wrap gap-2">
-                                                    <a class="btn btn-sm btn-outline-primary" href="owner.php?staff=<?= (int)$staffMember['id'] ?>#staffPanel">Edit</a>
+                                                    <button
+                                                        class="btn btn-sm btn-outline-primary edit-staff-btn"
+                                                        type="button"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#staffModal"
+                                                        data-staff-id="<?= (int)$staffMember['id'] ?>"
+                                                        data-staff-name="<?= htmlspecialchars((string)$staffMember['name']) ?>"
+                                                        data-staff-username="<?= htmlspecialchars((string)$staffMember['username']) ?>"
+                                                        data-staff-title="Edit Staff"
+                                                        data-staff-submit="Update Staff"
+                                                        data-staff-password-placeholder="Leave blank to keep current password"
+                                                    >Edit</button>
 
                                                     <?php if (!empty($staffMember['isSuspended'])): ?>
                                                         <form method="post">
@@ -565,10 +543,63 @@ if (!$sidesRows) {
                     </div>
                 </div>
             </div>
+
+            <div class="modal fade" id="staffModal" tabindex="-1" aria-labelledby="staffModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <form method="post">
+                            <input type="hidden" name="action" value="save_staff">
+                            <input type="hidden" name="staff_id" id="staffModalId" value="0">
+
+                            <div class="modal-header">
+                                <h5 class="modal-title fw-bold" id="staffModalLabel">Add New Staff</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="mb-3">
+                                    <label class="form-label" for="staffModalName">Staff Name</label>
+                                    <input class="form-control" id="staffModalName" name="staff_name" required placeholder="Staff full name">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label" for="staffModalUsername">Username</label>
+                                    <input class="form-control" id="staffModalUsername" name="staff_username" required placeholder="staff.username">
+                                </div>
+                                <div class="mb-0">
+                                    <label class="form-label" for="staffModalPassword">Password</label>
+                                    <input class="form-control" id="staffModalPassword" type="password" name="staff_password" placeholder="Set password">
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button class="btn btn-primary" id="staffModalSubmit" type="submit">Add Staff</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
         <?php endif; ?>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        const staffModal = document.getElementById('staffModal');
+        if (staffModal) {
+            staffModal.addEventListener('show.bs.modal', function(event) {
+                const button = event.relatedTarget;
+                if (!button) {
+                    return;
+                }
+
+                staffModal.querySelector('#staffModalId').value = button.dataset.staffId || '0';
+                staffModal.querySelector('#staffModalLabel').textContent = button.dataset.staffTitle || 'Add New Staff';
+                staffModal.querySelector('#staffModalName').value = button.dataset.staffName || '';
+                staffModal.querySelector('#staffModalUsername').value = button.dataset.staffUsername || '';
+                staffModal.querySelector('#staffModalPassword').value = '';
+                staffModal.querySelector('#staffModalPassword').placeholder = button.dataset.staffPasswordPlaceholder || 'Set password';
+                staffModal.querySelector('#staffModalSubmit').textContent = button.dataset.staffSubmit || 'Add Staff';
+            });
+        }
+
         function createMenuRow(prefix, defaultEmoji) {
             return `
                 <div class="menu-row p-2">
